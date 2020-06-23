@@ -44,6 +44,7 @@ func (t *Target) GetID() string {
 // containers/pods. The first result is targets added, the second is targets
 // removed
 func Watch(ctx context.Context, i v1.PodInterface, podFilter *regexp.Regexp, containerFilter *regexp.Regexp, containerExcludeFilter *regexp.Regexp, initContainers bool, containerState ContainerState, labelSelector labels.Selector) (chan *Target, chan *Target, error) {
+	var podNameList []string
 	watcher, err := i.Watch(metav1.ListOptions{Watch: true, LabelSelector: labelSelector.String()})
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to set up watch")
@@ -92,9 +93,24 @@ func Watch(ctx context.Context, i v1.PodInterface, podFilter *regexp.Regexp, con
 							Container: c.Name,
 						}
 						if containerState.Match(c.State) {
+							podNameList = append(podNameList, pod.Name)
 							added <- t
 						} else {
-							removed <- t
+							if containerState.has(ALL) {
+								if contains(podNameList, pod.Name) == -1 {
+									podNameList = append(podNameList, pod.Name)
+									added <- t
+								}
+							} else {
+								// Remove the element at index from podNameList.
+								index := contains(podNameList, pod.Name)
+								if index != -1 {
+									copy(podNameList[index:], podNameList[index+1:])
+									podNameList[len(podNameList)-1] = ""
+									podNameList = podNameList[:len(podNameList)-1]
+								}
+								removed <- t
+							}
 						}
 					}
 				case watch.Deleted:
@@ -112,11 +128,20 @@ func Watch(ctx context.Context, i v1.PodInterface, podFilter *regexp.Regexp, con
 							continue
 						}
 
+						// Remove the element at index from podNameList.
+						index := contains(podNameList, pod.Name)
+						if index != -1 {
+							copy(podNameList[index:], podNameList[index+1:])
+							podNameList[len(podNameList)-1] = ""
+							podNameList = podNameList[:len(podNameList)-1]
+						}
+
 						removed <- &Target{
 							Namespace: pod.Namespace,
 							Pod:       pod.Name,
 							Container: c.Name,
 						}
+
 					}
 				}
 			case <-ctx.Done():
@@ -129,4 +154,13 @@ func Watch(ctx context.Context, i v1.PodInterface, podFilter *regexp.Regexp, con
 	}()
 
 	return added, removed, nil
+}
+
+func contains(podNameSlice []string, podNameItem string) int {
+	for index, podName := range podNameSlice {
+		if podName == podNameItem {
+			return index
+		}
+	}
+	return -1
 }
