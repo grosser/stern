@@ -26,17 +26,18 @@ const (
 	RUNNING    = "running"
 	WAITING    = "waiting"
 	TERMINATED = "terminated"
+	ALL        = "all"
 )
 
 func NewContainerState(stateConfig []string) (ContainerState, error) {
 	var containerState []string
 	for _, p := range stateConfig {
-		if p == RUNNING || p == WAITING || p == TERMINATED {
+		if p == RUNNING || p == WAITING || p == TERMINATED || p == ALL {
 			containerState = append(containerState, p)
 		}
 	}
 	if len(containerState) == 0 {
-		return []string{}, errors.New("containerState should include 'running', 'waiting', or 'terminated'")
+		return []string{}, errors.New("containerState should include 'running', 'waiting', 'terminated', or 'all'")
 	}
 	return containerState, nil
 }
